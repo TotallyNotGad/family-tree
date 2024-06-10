@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+  <script src="https://unpkg.com/d3@6"></script>
+  <script src="/family-chart.js"></script>
+  <script src="//unpkg.com/alpinejs" defer></script>
+
+  <link rel="stylesheet" href="ftree.css">
+
+  <script>
+    //////////
+    familyTree = {}
+
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+
+      display: grid;
+      grid-template-columns: 350px 90%;
+      grid-template-areas: 'side graph';
+    }
+
+    #graph {
+      grid-area: graph
+    }
+
+    aside {
+      grid-area: side;
+      border-right: 2px solid black;
+      overflow: scroll;
+    }
+
+    aside details {
+      border-bottom: 2px solid black;
+      height: 3rem;
+    }
+
+    h1 {
+      width: 100%;
+      text-align: center;
+      font-size: 2.5rem;
+      border-bottom: 2px solid black;
+      margin: none;
+    }
+  </style>
+
+
+  <title>Document</title>
+
+</head>
+
+<body>
+  <aside>
+    <header>
+
+      <h1>People</h1>
+      <!-- <form id="villageForm">
+        <input type="text" name="name" placeholder="name">
+        <input type="text" name="parent" placeholder="parents">
+        <input type="text" name="kids" placeholder="kids">
+      </form>
+      <button @click="addVillager">Add Villager</button> -->
+      <form enctype="multipart/form-data">
+        <input id="upload" type="file" accept="text/" name="files" size=30>
+      </form>
+
+      <script>
+        function handle_file_select(evt) {
+          console.info("[Event] file chooser");
+
+          let fl_files = evt.target.files; // JS FileList object
+
+          // use the 1st file from the list
+          let fl_file = fl_files[0];
+
+          let reader = new FileReader(); // built in API
+
+          let display_file = (e) => { // set the contents of the <textarea>
+            console.info('. . got: ', e.target.result.length, e);
+            familyTree = e.target.result
+            familyTree = fillTree(familyTree)
+          };
+
+          let on_reader_load = (fl) => {
+            console.info('. file reader load', fl);
+            return display_file; // a function
+          };
+
+          // Closure to capture the file information.
+          reader.onload = on_reader_load(fl_file);
+
+          // Read the file as text.
+          reader.readAsText(fl_file);
+        }
+
+        // add a function to call when the <input type=file> status changes, but don't "submit" the form
+        document.getElementById('upload').addEventListener('change', handle_file_select, false); </script>
+    </header>
+    <div id="test"></div>
+  </aside>
+
+  <div class="f3" id="graph"></div>
+  <script>
+
+    const fillTree = (input) => {
+      tree = {}
+      input.split('\n').forEach(line => {
+        if (line == '') return
+        let name = line.split(' ')[0]
+        let gender = line.match(/\(([^\]]*?)\)/).map(string => string == "()" ? false : string)[0]
+        let parents = line.match(/\[([^\]]*?)\]/g).map(string => string.slice(1, string.length - 1))
+        console.log(parents)
+        tree[name] = {
+          gender, parents
+        }
+      })
+
+      Object.keys(tree).forEach(id => {
+        let mom = false, dad = false
+
+        if (!tree[tree[id].parents[0]]?.gender && !tree[tree[id]?.parents[1]]?.gender) {
+
+          console.log('1', tree[tree[id].parents[0]], tree[tree[id].parents[1]])
+
+          if (!tree[tree[id].parents[0]]) tree[tree[id].parents[0]] = {}
+          tree[tree[id].parents[0]].gender = "F"
+
+          if (!tree[tree[id].parents[1]]) tree[tree[id].parents[1]] = {}
+          tree[tree[id].parents[1]].gender = "M"
+        }
+
+        else if (!tree[tree[id].parents[0]]?.gender) {
+          console.log('2', tree[tree[id].parents[0]], tree[tree[id].parents[1]])
+          if (!tree[tree[id].parents[0]]) tree[tree[id].parents[0]] = {}
+          tree[tree[id].parents[0]].gender = tree[tree[id].parents[1]].gender == "M" ? "F" : "M"
+        }
+
+        else if (!tree[tree[id].parents[1]]?.gender) {
+
+          console.log('3', tree[tree[id].parents[0]], tree[tree[id].parents[1]])
+          if (!tree[tree[id].parents[1]]) tree[tree[id].parents[1]] = {}
+          tree[tree[id].parents[1]].gender = tree[tree[id].parents[0]].gender == "M" ? "F" : "M"
+        }
+
+        if (!tree[tree[id].parents[0]].kids) tree[tree[id].parents[0]].kids = []
+        if (!tree[tree[id].parents[1]].kids) tree[tree[id].parents[1]].kids = []
+
+        tree[tree[id].parents[0]].kids.push({
+          name: id,
+          with: tree[id].parents[1]
+        })
+
+        tree[tree[id].parents[1]].kids.push({
+          name: id,
+          with: tree[id].parents[0]
+        })
+        tree[id].parents = tree[id].parents ?? []
+        tree[id].kids = tree[id].kids ?? []
+      })
+
+
+
+      let treeAlpine = document.getElementById('test')
+      treeAlpine.innerHTML = `    <section  x-data="{familyTree, newMain}"">
+      <template x-for="member in Object.keys(familyTree)">
+        <div @click="newMain(member)", style="border-bottom: 2px solid black">
+          <span x-text="member" style="display: inline-block; font-size:1.5rem; width: 100%; height: 3rem; text-align: center;"></span>
+
+        </div>
+      </template>
+    </section>`
+    console.log(tree)
+    return tree
+    }
+    const catchParentalIncest = (tree, children, parent) => {
+      let incestCaces = []
+      children.forEach(child => {
+        child = getMemberData(tree, child)
+        if (child.spouses.includes(parent)) {
+          incestCaces.push(child.id)
+        } else if (child.children) {
+          incestCaces = incestCaces.concat(catchParentalIncest(tree, child.children, parent))
+        }
+      });
+      return incestCaces
+    }
+
+    const resolveIncestCases = (tree) => {
+      Object.keys(tree).forEach(id => {
+        let out = getMemberData(tree, id)
+        let crimesAgainstGod = catchParentalIncest(tree, out.children, out.newMember.id)
+        let crimeKids = []
+        cloneId = id + " (clone)"
+        if (crimesAgainstGod.length) {
+          crimesAgainstGod.forEach(crime => {
+            tree[crime].kids = tree[crime].kids.map(kid => {
+              crimeKids.push({
+                name: kid.name,
+                with: crime
+              })
+              if (kid.with == id) {
+                tree[kid.name].parents = [crime, cloneId]
+                return {
+                  name: kid.name,
+                  with: cloneId
+                }
+              } else return kid
+            })
+          })
+
+          tree[cloneId] = {
+            kids: crimeKids,
+            parents: [], gender: tree[id].gender
+          }
+
+          tree[id].kids = tree[id].kids.filter(kid => !crimesAgainstGod.includes(kid.with)) ?? []
+        }
+      })
+      return tree
+    }
+
+    const getRels = (tree, curr, graph, seen, queue) => {
+      out = getMemberData(tree, curr)
+
+      graph.push(out.newMember)
+
+      seen.push(curr)
+      queue = queue.filter(q => q !== curr)
+      queue = queue.concat(out.children.filter(c => !seen.includes(c)))
+      queue = queue.concat(out.spouses.filter(c => !seen.includes(c)))
+      queue = queue.concat(tree[curr].parents.filter(c => !seen.includes(c)))
+
+      if (queue.length) {
+        graph = getRels(tree, queue[0], graph, seen, queue)
+      }
+      return (graph)
+    }
+
+    const removeOrphanedSpouseLinks = (tree, main) => {
+      
+    }
+
+    const getMemberData = (tree, curr) => {
+      console.log(curr, tree[curr].parents)
+
+      if (!tree[curr]?.parents) {
+        console.log(curr)
+        tree[curr].parents = []
+      }
+      let spouses = Array.from(new Set(tree[curr].kids.map(kid => kid.with))),
+        children = tree[curr].kids.map(kid => kid.name),
+        dad = (tree[curr].parents.filter(p => tree[p].gender == 'M')[0] ?? ""),
+        mom = (tree[curr].parents.filter(p => tree[p].gender == 'F')[0] ?? "")
+
+
+      let newMember = {
+        id: curr,
+        data: {
+          "first name": curr + (tree[curr].main ? " (Main)" : ""),
+          "last name": "",
+          gender: tree[curr].gender
+        }, rels: {
+          spouses,
+          children,
+        }
+      }
+
+      if (mom && dad) {
+        newMember.rels.mother = mom
+        newMember.rels.father = dad
+      }
+
+      return { spouses, children, mom, dad, newMember, id: newMember.id }
+    }
+
+    const newMain = (main) => {
+      Object.keys(familyTree).forEach(id => familyTree[id].main = false)
+      familyTree[main].main = true
+      store.state.data = getRels(resolveIncestCases(familyTree), main, [], [], [])
+      store.update.tree()
+    }
+
+
+    `const addVillager = () => {
+      let form = new FormData(document.getElementById('villageForm'))
+      familyTree[form.get('name')] = {
+        kids: (form.get('kids') ?? '').split(','),
+        parents: (form.get('parents')?? '').split(',') == [""] ? [] : form.get('parents').split(',')
+      }
+      newMain(form.get('name'))
+    }`
+
+    const store = f3.createStore({
+      data: data(),
+      node_separation: 250,
+      level_separation: 150
+    }),
+      view = f3.d3AnimationView({
+        store,
+        cont: document.querySelector("#graph")
+      }),
+      Card = f3.elements.Card({
+        store,
+        svg: view.svg,
+        card_dim: {
+          w: 200,
+          h: 50,
+          text_x: 15,
+          text_y: 15,
+          img_x: 0,
+          img_y: 0,
+          img_w: 0,
+          img_h: 0
+        },
+        card_display: [
+          (d) => `${d.data["first name"] || ""} ${d.data["last name"] || ""}`,
+          (d) => ""
+        ],
+        mini_tree: true,
+        link_break: false
+      });
+
+    view.setCard(Card);
+    store.setOnUpdate((props) => view.update(props || {}));
+    store.update.tree({ initial: true });
+
+    function data() {
+      return []
+    }
+
+    Alpine.data('model', () => {
+      familyTree, addVillager, newMain
+    })
+    Alpine.init()
+  </script>
+
+</body>
+
+</html>
